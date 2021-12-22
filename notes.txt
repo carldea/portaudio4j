@@ -1,0 +1,52 @@
+
+# download from
+Go to: http://portaudio.com/docs/v19-doxydocs/tutorial_start.html
+
+
+$ cd ~
+$ mkdir ~/projects
+$ cd ~/projects
+$ git clone git@github.com:PortAudio/portaudio.git
+$ cd portaudio
+
+# Create port audio library
+$ ./configure && make
+
+# compile example
+$ cd examples
+$ gcc -Wall -I ../include -I /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include paex_saw.c -o paex_saw ../lib/.libs/libportaudio.a -framework CoreServices -framework CoreFoundation -framework AudioUnit -framework AudioToolbox -framework CoreAudio
+
+# Run compile app.
+$ ./paex_saw
+
+# ===============================
+# Run as the Java Panama version
+# ===============================
+$ export DYLD_LIBRARY_PATH=.:~/projects/portaudio/lib/.libs/
+$ cd ~/projects
+$ git clone portaudio4j
+$ cd portaudio4j
+
+# jextract stdio.h
+jextract --source -d generated/src -t org.portaudio \
+  -l portaudio \
+  -I ../include \
+  -I /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include \
+  foo.h
+
+# add to classes
+jextract -d classes -t org.portaudio \
+  -l portaudio \
+  -I ../include \
+  -I /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include \
+  foo.h
+
+javac -cp .:classes \
+   -d . \
+   --add-modules jdk.incubator.foreign \
+   src/PaexSaw.java
+
+java -cp .:classes \
+  --enable-native-access=ALL-UNNAMED \
+  --add-modules jdk.incubator.foreign \
+  PaexSaw

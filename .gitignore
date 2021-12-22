@@ -1,0 +1,8 @@
+generated/
+classes/
+.idea/
+out/
+paex_saw
+*.class
+*.iml
+*.log
