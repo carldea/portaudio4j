@@ -5,7 +5,25 @@ in the future it may be a port of accessing PortAudio completely in Java.
 Go to: http://portaudio.com/docs/v19-doxydocs/tutorial_start.html
 
 # Getting started
-1. Download Java 17 JDK with jextract tool here: https://jdk.java.net/panama/
+1. As of this writting the download of Java 19 JDK with jextract tool isn't released: https://jdk.java.net/panama/
+   So, new to this project it to clone Panama's project and build it!
+   *To get this working go and clone https://github.com/openjdk/panama-foreign
+   
+```shell
+  $ # download LLVM to your MacOS clang+llvm-9.x
+  $ git clone git@github.com:openjdk/panama-foreign.git
+  $ cd panama-foreign
+  $ make clean
+  $ bash configure --with-libclang=/<install_directory_path_to>/clang+llvm-9.0.1-x86_64-apple-darwin/
+  $ make images 
+
+```
+ After creating your new OpenJDK 19 containing jextract set your JAVA_HOME and path to the new images.
+ Make sure the file setup.sh contains the new path to the newly built openjdk!
+```shell
+ $ export JAVA_HOME=$HOME/projects/panama-foreign/build/macosx-x86_64-server-release/images/jdk
+```
+
 2. Set your JAVA_HOME and PATH
    * Note: If installed in $HOME/sdks directory you can do the following:
      This assumes you're at **Step 6** below
@@ -56,6 +74,8 @@ $ gcc -Wall \
 ```shell
 $ ./paex_saw
 ```
+Keep the executable handy as you will run it again to listen to the sound. To test whether it sounds like the Java Panama version!
+
 # Run as the Java Panama version
 Assuming the Port Audio library is build from the prior step you'll want to point the library path to the directory.
 ```shell
@@ -99,8 +119,8 @@ java -cp .:classes \
   PaexSaw
 ```
 # Known issues:
-1. The Panama version (this file), is too loud and may have some timing issue as the sound doesn't sound the same as the high pitch of the native C version.
+1. (fixed) The Panama version (this file), is too loud and may have some timing issue as the sound doesn't sound the same as the high pitch of the native C version.
 2. This version is for MacOS and Linux at the moment. 
-3. One setting is different. To have the same settings for SAMPLE_RATE 
+3. (fixed) One setting is different. To have the same settings for SAMPLE_RATE 
    the example would be too loud!!! So, it's currently at 22050 hz.
    

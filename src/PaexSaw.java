@@ -2,24 +2,19 @@
 import jdk.incubator.foreign.*;
 import org.portaudio.PaStreamCallback;
 import org.portaudio.foo_h;
-import static jdk.incubator.foreign.CLinker.*;
 import static org.portaudio.foo_h.*;
 
 /**
  * This is a port of Port Audio's example paex_saw.c.
  *
  * http://portaudio.com/docs/v19-doxydocs/writing_a_callback.html
+ * To run the Java version:
+ * <code>
+ *     $ ./jextract_foo.h.sh
+ *     $ export DYLD_LIBRARY_PATH=.:$HOME/projects/portaudio/lib/.libs
+ *     $ java --enable-native-access=ALL-UNNAMED --add-modules jdk.incubator.foreign -classpath .:classes PaexSaw
+ * </code>
  *
- * <pre>
- *     WARNING: THIS is extremely loud!!! please have the mute READY or the volume at it's lowest.
- *     Known issues:
- *       1) The Panama version (this file), is too loud and may have some timing issue as
- *          the sound doesn't sound the same as the high pitch of the native C version.
- *       2) This version is for MacOS at the moment.
- *       3) One setting is different. To have the same settings for SAMPLE_RATE
- *          the example would be too loud!!! So, it's currently at 22050 hz.
- *
- * </pre>
  * <code>
  *    $ gcc -Wall \
  *       -I ../include \
@@ -36,11 +31,8 @@ import static org.portaudio.foo_h.*;
  */
 public class PaexSaw {
 
-//    public static int SAMPLE_RATE = 44100;
-    public static int SAMPLE_RATE = 22050;
-//    public static int SAMPLE_RATE = 11025;
+    public static int SAMPLE_RATE = 44100;
     public static int NUM_SECONDS = 4;
-    public static MemoryAddress pStream;
     public static final MemoryLayout paTestData = MemoryLayout.structLayout(
             C_FLOAT.withName("left_phase"),
             C_FLOAT.withName("right_phase")
@@ -49,29 +41,26 @@ public class PaexSaw {
     private static void error(int err) {
         Pa_Terminate();
         StringBuilder sb = new StringBuilder();
+        String errMsg = Pa_GetErrorText( err ).getUtf8String(0);
         sb.append("An error occurred while using the portaudio stream\n" )
           .append("Error number: %d\n".formatted( err ))
-          .append("Error message: %s\n".formatted(toJavaString(Pa_GetErrorText( err ))));
+          .append("Error message: %s\n".formatted(errMsg));
         throw new RuntimeException(sb.toString());
     }
     public static void main(String[] args) {
-//        Thread terminatePortAudio = new Thread(() -> {
-//            System.out.println("In the middle of a shutdown");
-//            Pa_Terminate();
-//        });
-//        Runtime.getRuntime().addShutdownHook(terminatePortAudio);
 
         try (var scope = ResourceScope.newSharedScope()) {
-            var allocator = SegmentAllocator.ofScope(scope);
+            var allocator = SegmentAllocator.newNativeArena(scope);
             System.out.printf("PortAudio Test: output sawtooth wave.\n");
 
             /* Initialize our data for use by callback. */
             // PaStream *stream;
-            MemorySegment ppStream = allocator.allocate(C_POINTER);
-            var data = allocator.allocate(paTestData.byteSize());
+            MemorySegment ppStream = MemorySegment.allocateNative(C_POINTER, scope);
 
-            var vhLeftPhase = paTestData.varHandle(float.class, MemoryLayout.PathElement.groupElement("left_phase"));
-            var vhRightPhase = paTestData.varHandle(float.class, MemoryLayout.PathElement.groupElement("right_phase"));
+            var data = allocator.allocate(paTestData);
+
+            var vhLeftPhase = paTestData.varHandle(MemoryLayout.PathElement.groupElement("left_phase"));
+            var vhRightPhase = paTestData.varHandle(MemoryLayout.PathElement.groupElement("right_phase"));
             vhLeftPhase.set(data, 0.0f);
             vhRightPhase.set(data, 0.0f);
             System.out.println("vhLeftPhase.get(data) " + vhLeftPhase.get(data));
@@ -92,17 +81,16 @@ public class PaexSaw {
                     SAMPLE_RATE,
                     256,        /* frames per buffer */
                     pPaStreamCallback,
-                    data.address() );
+                    data );
 
             if( err != paNoError()) error(err);
 
-            pStream = MemoryAccess.getAddress(ppStream);
+            MemoryAddress pStream = ppStream.get(C_POINTER,0);
             err = Pa_StartStream( pStream );
             if( err != paNoError()) error(err);
 
             /* Sleep for several seconds. */
             Pa_Sleep(NUM_SECONDS*1000);
-
             err = Pa_StopStream( pStream );
             if( err != paNoError()) error(err);
 
@@ -141,27 +129,24 @@ public class PaexSaw {
                              long statusFlags,
                              MemoryAddress userData) {
 
-                var vHLeftPhase = userData.asSegment(4, scope);
-                var vHRightPhase = userData.addOffset(4).asSegment(4, scope);
-
+                var vHLeftPhase = MemorySegment.ofAddress(userData, 4, scope);
+                var vHRightPhase = MemorySegment.ofAddress(vHLeftPhase.address().addOffset(4), 4, scope);
                 for(int i=0; i<framesPerBuffer; i++ ) {
+                    var out = outputBuffer.addOffset(i * 4);
 
+                    out.set(C_FLOAT, (i*4), vHLeftPhase.get(C_FLOAT, 0));
+                    out.set(C_FLOAT, (i*4) + 4, vHRightPhase.get(C_FLOAT, 0));
 //                    *out++ = data->left_phase;  /* left */
 //                    *out++ = data->right_phase;  /* right */
 
-                    var out = outputBuffer.addOffset(i * 4).asSegment(4, scope);
-                    MemoryAccess.setFloat(out, MemoryAccess.getFloat(vHLeftPhase));
-                    out = outputBuffer.addOffset((i * 4) + 4).asSegment(4, scope);
-                    MemoryAccess.setFloat(out, MemoryAccess.getFloat(vHRightPhase));
-
-                    MemoryAccess.setFloat(vHLeftPhase, MemoryAccess.getFloat(vHLeftPhase) + 0.01f);
-                    if( MemoryAccess.getFloat(vHLeftPhase) >= 1.0f ) {
-                        MemoryAccess.setFloat(vHLeftPhase, MemoryAccess.getFloat(vHLeftPhase) - 2.0f);
+                    vHLeftPhase.set(C_FLOAT, 0, vHLeftPhase.get(C_FLOAT, 0) + 0.01f);
+                    if( vHLeftPhase.get(C_FLOAT, 0) >= 1.0f ) {
+                        vHLeftPhase.set(C_FLOAT, 0, vHLeftPhase.get(C_FLOAT, 0) - 2.0f);
                     }
 
-                    MemoryAccess.setFloat(vHRightPhase, MemoryAccess.getFloat(vHRightPhase) + 0.03f);
-                    if( MemoryAccess.getFloat(vHRightPhase) >= 1.0f ) {
-                        MemoryAccess.setFloat(vHRightPhase, MemoryAccess.getFloat(vHRightPhase) - 2.0f);
+                    vHRightPhase.set(C_FLOAT, 0, vHRightPhase.get(C_FLOAT, 0) + 0.03f);
+                    if( vHRightPhase.get(C_FLOAT, 0) >= 1.0f ) {
+                        vHRightPhase.set(C_FLOAT, 0, vHRightPhase.get(C_FLOAT, 0) - 2.0f);
                     }
                 }
                 return 0;
